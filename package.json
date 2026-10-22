@@ -1,0 +1,16 @@
+{
+  "name": "clean-comments",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "clean-comments": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}
