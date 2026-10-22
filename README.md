@@ -33,7 +33,7 @@ You can run this tool instantly on any project without installing it, or configu
 Open the terminal inside **any front-end or back-end project** that has a `src` directory, and run the following command directly:
 
 ```bash
-npx github:eslam985/clean-comments
+npx github:eslam985/clean-comments#main
 ```
 
 ### Option 2: Add it to your Project Scripts
