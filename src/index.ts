@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import * as fs from "fs";
 import * as path from "path";
 import { parse as babelParse } from "@babel/parser";
@@ -29,7 +31,7 @@ const cleanHtmlCode = (content: string): { content: string; count: number } => {
 const cleanCssCode = (content: string): { content: string; count: number } => {
   const matches = content.match(/\/\*[\s\S]*?\*\//g);
   const count = matches ? matches.length : 0;
-  
+
   return { content: content.replace(/\/\*[\s\S]*?\*\//g, ""), count };
 };
 
