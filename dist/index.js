@@ -31,7 +31,7 @@ const main = () => {
     }
     try {
         const files = getAllFiles(targetDir);
-        const allowedExtensions = /\.(js|ts|vue|css|html)\$/;
+        const allowedExtensions = /\.(js|ts|vue|css|html)$/;
         files.forEach((filePath) => {
             if (allowedExtensions.test(filePath)) {
                 const rawContent = fs.readFileSync(filePath, 'utf8');
