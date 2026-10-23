@@ -22,12 +22,14 @@ const getAllFiles = (dir: string): string[] => {
 const cleanHtmlCode = (content: string): { content: string; count: number } => {
   const matches = content.match(/<!--[\s\S]*?-->/g);
   const count = matches ? matches.length : 0;
+
   return { content: content.replace(/<!--[\s\S]*?-->/g, ""), count };
 };
 
 const cleanCssCode = (content: string): { content: string; count: number } => {
   const matches = content.match(/\/\*[\s\S]*?\*\//g);
   const count = matches ? matches.length : 0;
+  
   return { content: content.replace(/\/\*[\s\S]*?\*\//g, ""), count };
 };
 
