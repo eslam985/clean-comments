@@ -19,18 +19,23 @@ const getAllFiles = (dir: string): string[] => {
     }, []);
 };
 
-const cleanHtmlCode = (content: string): string => {
-  return content.replace(/<!--[\s\S]*?-->/g, "");
+const cleanHtmlCode = (content: string): { content: string; count: number } => {
+  const matches = content.match(/<!--[\s\S]*?-->/g);
+  const count = matches ? matches.length : 0;
+  return { content: content.replace(/<!--[\s\S]*?-->/g, ""), count };
 };
 
-const cleanCssCode = (content: string): string => {
-  return content.replace(/\/\*[\s\S]*?\*\//g, "");
+const cleanCssCode = (content: string): { content: string; count: number } => {
+  const matches = content.match(/\/\*[\s\S]*?\*\//g);
+  const count = matches ? matches.length : 0;
+  return { content: content.replace(/\/\*[\s\S]*?\*\//g, ""), count };
 };
 
 /**
  * تنظيف الكود البرمجي (JS/TS) باستخدام Babel AST
  */
-const cleanJsTsCode = (code: string): string => {
+const cleanJsTsCode = (code: string): { content: string; count: number } => {
+  let count = 0;
   try {
     const ast = babelParse(code, {
       sourceType: "module",
@@ -40,71 +45,87 @@ const cleanJsTsCode = (code: string): string => {
 
     traverse(ast, {
       enter(path: any) {
-        if (path.node.leadingComments) path.node.leadingComments = undefined;
-        if (path.node.trailingComments) path.node.trailingComments = undefined;
-        if (path.node.innerComments) path.node.innerComments = undefined;
+        if (path.node.leadingComments) {
+          count += path.node.leadingComments.length;
+          path.node.leadingComments = undefined;
+        }
+        if (path.node.trailingComments) {
+          count += path.node.trailingComments.length;
+          path.node.trailingComments = undefined;
+        }
+        if (path.node.innerComments) {
+          count += path.node.innerComments.length;
+          path.node.innerComments = undefined;
+        }
       },
     });
 
     const output = generate(ast, { retainLines: true }, code);
-    return output.code;
+    return { content: output.code, count };
   } catch (error) {
     console.warn(
       `⚠️ Warning: AST parse failed for script block, keeping original.`,
     );
-    return code;
+    return { content: code, count: 0 };
   }
 };
 
 /**
  * تنظيف ملفات الـ Vue SFC (.vue)
  */
-const cleanVueFile = (fileContent: string, filePath: string): string => {
+const cleanVueFile = (fileContent: string, filePath: string): { content: string; count: number } => {
   try {
     const { descriptor } = vueParse(fileContent, { filename: filePath });
     let result = fileContent;
+    let totalCount = 0;
 
-    // 1. تنظيف السكربت العادي أو script setup باستخدام Babel AST
     const scriptBlock = descriptor.scriptSetup || descriptor.script;
     if (scriptBlock) {
-      const cleanedScript = cleanJsTsCode(scriptBlock.content);
-      // استبدال محتوى السكربت القديم بالجديد داخل الملف
-      const tagRegex = new RegExp(`(<script[^>]*>)([\\s\\S]*?)(<\\/script>)`);
-      result = result.replace(
-        tagRegex,
-        (_match, openTag, _content, closeTag) => {
-          return `${openTag}\n${cleanedScript}\n${closeTag}`;
-        },
-      );
+      const { content: cleanedScript, count } = cleanJsTsCode(scriptBlock.content);
+      totalCount += count;
+      if (count > 0) {
+        const tagRegex = new RegExp(`(<script[^>]*>)([\\s\\S]*?)(<\\/script>)`);
+        result = result.replace(
+          tagRegex,
+          (_match, openTag, _content, closeTag) => {
+            return `${openTag}\n${cleanedScript}\n${closeTag}`;
+          },
+        );
+      }
     }
 
-    // 2. تنظيف تعليقات الـ HTML في الـ Template <!-- ... -->
     if (descriptor.template) {
-      const templateContent = descriptor.template.content;
-      const cleanedTemplate = templateContent.replace(/<!--[\s\S]*?-->/g, "");
-      result = result.replace(
-        /(<template[^>]*>)([\s\S]*?)(<\/template>)/,
-        (_match, openTag, _content, closeTag) => {
-          return `${openTag}${cleanedTemplate}${closeTag}`;
-        },
-      );
+      const { content: cleanedTemplate, count } = cleanHtmlCode(descriptor.template.content);
+      totalCount += count;
+      if (count > 0) {
+        result = result.replace(
+          /(<template[^>]*>)([\s\S]*?)(<\/template>)/,
+          (_match, openTag, _content, closeTag) => {
+            return `${openTag}${cleanedTemplate}${closeTag}`;
+          },
+        );
+      }
     }
 
-    // 3. تنظيف تعليقات الـ CSS في الـ Style /* ... */
     if (descriptor.styles && descriptor.styles.length > 0) {
-      result = result.replace(
-        /(<style[^>]*>)([\s\S]*?)(<\/style>)/g,
-        (_match, openTag, content, closeTag) => {
-          const cleanedStyle = content.replace(/\/\*[\s\S]*?\*\//g, "");
-          return `${openTag}${cleanedStyle}${closeTag}`;
-        },
-      );
+      for (const style of descriptor.styles) {
+        const { content: cleanedStyle, count } = cleanCssCode(style.content);
+        totalCount += count;
+        if (count > 0) {
+          result = result.replace(
+            /(<style[^>]*>)([\s\S]*?)(<\/style>)/g,
+            (_match, openTag, _content, closeTag) => {
+              return `${openTag}${cleanedStyle}${closeTag}`;
+            },
+          );
+        }
+      }
     }
 
-    return result;
+    return { content: result, count: totalCount };
   } catch (error) {
     console.warn(`⚠️ Warning: Could not parse Vue file ${filePath}`, error);
-    return fileContent;
+    return { content: fileContent, count: 0 };
   }
 };
 
@@ -119,27 +140,32 @@ const main = (): void => {
   try {
     const files = getAllFiles(targetDir);
     const allowedExtensions = /\.(js|ts|vue|html|css)$/;
+    let totalCommentsRemoved = 0;
+
     files.forEach((filePath) => {
       if (allowedExtensions.test(filePath)) {
         const rawContent = fs.readFileSync(filePath, "utf8");
-        let cleanContent = rawContent;
+        let result = { content: rawContent, count: 0 };
 
         if (filePath.endsWith(".vue")) {
-          cleanContent = cleanVueFile(rawContent, filePath);
+          result = cleanVueFile(rawContent, filePath);
         } else if (filePath.endsWith(".html")) {
-          cleanContent = cleanHtmlCode(rawContent);
+          result = cleanHtmlCode(rawContent);
         } else if (filePath.endsWith(".css")) {
-          cleanContent = cleanCssCode(rawContent);
+          result = cleanCssCode(rawContent);
         } else {
-          cleanContent = cleanJsTsCode(rawContent);
+          result = cleanJsTsCode(rawContent);
         }
 
-        fs.writeFileSync(filePath, cleanContent, "utf8");
-        console.log(`✨ AST Cleaned: ${filePath}`);
+        if (result.count > 0) {
+          fs.writeFileSync(filePath, result.content, "utf8");
+          totalCommentsRemoved += result.count;
+          console.log(`✨ Cleaned: ${filePath} (${result.count} comments removed)`);
+        }
       }
     });
 
-    console.log("✅ Basecode successfully cleaned using AST & SFC Parser!");
+    console.log(`\n✅ Basecode successfully cleaned! Total comments removed: ${totalCommentsRemoved}`);
   } catch (error) {
     console.error("💥 An error occurred during execution:", error);
     process.exit(1);
