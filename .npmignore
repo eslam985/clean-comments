@@ -1,0 +1,5 @@
+# Development files
+src/
+tsconfig.json
+node_modules/
+*.tsbuildinfo
